@@ -1,9 +1,19 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code (claude.ai/code) when working in this repository.
+Guidance for AI coding agents (Claude Code, Codex, etc.) working in this repository. Claude-specific
+configuration (skills, subagents, hooks, MCP selection) lives in `CLAUDE.md`.
 
 Django 6 app for PyCon DE / PyData Berlin talks and schedules. Stack: Python 3.14, Tailwind v4,
 HTMX, SQLite (dev) / PostgreSQL 18 (prod), `uv` for packages.
+
+## Layout
+
+- `event_talks/`, `events/`, `talks/`, `users/`, `utils/`: Django project and apps
+- `templates/`: Django templates (HTMX partials included)
+- `docs/`: Zensical site; `docker/`: Docker Compose and image files
+- Run the dev server: `uv run python manage.py runserver 8000`
+
+See [docs/architecture/index.md](docs/architecture/index.md) for the full app layout.
 
 ## Code style
 
@@ -24,14 +34,9 @@ HTMX, SQLite (dev) / PostgreSQL 18 (prod), `uv` for packages.
 
 ### What docformatter does not catch
 
-It skips any description containing a line it reads as a field list, and the pattern it uses for
-that allows spaces in the field name (`^\s[a-zA-Z0-9_\- ]+ ?: [\S ]+`). So a description with an
-ordinary colon in it, like `...has to hold: this is only for reporting.`, is left at whatever width
-it was typed at. Not configurable: the patterns run for every `--style`, and `--force-wrap` bypasses
-all structure detection and flattens real `Attributes:` sections.
-
-So the width is on you for any docstring description containing a colon or a hyphenated aside, and
-for every comment anywhere. Check those by eye; nothing else will.
+It skips any docstring description that contains a colon or a hyphenated aside (it reads the line as
+a field list), so the 100-column width is on you for those, and for every comment. Check them by
+eye. Do not use `--force-wrap`: it flattens real `Attributes:` sections.
 
 ## Tests and code quality
 
@@ -40,24 +45,22 @@ for every comment anywhere. Check those by eye; nothing else will.
 - Keep functions small and focused. If a function grows complex (deep nesting, many branches, hard
   to test), refactor before adding more to it. Extract helpers, split responsibilities.
 - SonarQube has many false positives. Silence with `# NOSONAR` (and a one-line reason) only when the
-  finding clearly does not apply. Default is to fix, not silence.
+  finding clearly does not apply. Default is to fix, not silence, and never silence a finding just
+  to make CI pass.
 - When you change views, querysets, permissions, middleware, or auth code, consider spawning the
   `security-reviewer` subagent for a second pass (cross-event leaks, auth bypasses, PII in logs).
   Optional, not mandatory.
 
 ### SonarQube and Django templates
 
-Its HTML analyzer does not know Django syntax, which produces two recurring classes of false
-positive in `templates/`. Both are avoidable when writing the template:
+Its HTML analyzer does not know Django syntax. Two rules for `templates/`:
 
-- **A comment body is parsed as markup.** `{# ... #}` and `{% comment %}` are invisible to the
-  analyzer, so a tag written literally in one becomes a real element in its parse, and prose inside
-  an interactive element becomes that element's visible text. Name elements in prose
-  (`a nav element`, `output elements`), use `{placeholder}` not `<placeholder>` for id patterns, and
-  keep a comment out of a `<button>` or `<a>`.
-- **A partial is analyzed as a standalone file.** Anything the including template supplies is
-  invisible, so a labelled control in a partial still reports as unlabelled. Not fixable in the
-  template; mark it false positive with the including template named as the reason.
+- Do not write a tag literally inside `{# ... #}` or `{% comment %}`: the analyzer parses it as a
+  real element. Name elements in prose (`a nav element`), use `{placeholder}` not `<placeholder>`,
+  and keep a comment out of a `<button>` or `<a>`.
+- A partial is analyzed as a standalone file, so anything the including template supplies is
+  invisible (for example a control's label). Mark such findings false positive, with the including
+  template named as the reason.
 
 `mcp__sonarqube__analyze_code_snippet` runs the real analyzer on one file, so a suspected false
 positive can be confirmed (and a fix checked) without waiting for a full `/ci` upload.
@@ -77,8 +80,8 @@ Security tab. A workflow edit must keep it clean: actions pinned to a full commi
 `persist-credentials: false` on every checkout, and the narrowest `permissions` per job.
 
 The full local CI + SonarQube refresh pipeline lives in the `/ci` skill
-([.claude/skills/ci.md](.claude/skills/ci.md)). Claude **may** invoke it, but should do so
-sparingly:
+([.claude/skills/ci/SKILL.md](.claude/skills/ci/SKILL.md)). In Claude Code it is `/ci` and is
+user-invoked only (`disable-model-invocation: true`), so ask the user to run it. Use it sparingly:
 
 - Each run takes ~1-2 minutes and uploads to SonarCloud, so treat it as a verification step, not a
   loop.
@@ -88,32 +91,29 @@ sparingly:
 
 The `mcp__sonarqube__*` tools query findings from the last upload.
 
-Two MCP servers are configured in `.mcp.json`: `sonarqube` (self-hosted Docker, full toolset) and
-`sonarqubeCloud` (cloud-native HTTP, smaller toolset). Default is `sonarqube`. Only switch to
-`sonarqubeCloud` if the Docker-based server is unavailable (e.g., Docker not running).
+Two MCP servers are configured in `.mcp.json` for all agents: `sonarqube` (self-hosted Docker, full
+toolset) and `sonarqubeCloud` (cloud-native HTTP, smaller toolset). Default is `sonarqube`. Only
+switch to `sonarqubeCloud` if the Docker-based server is unavailable (e.g., Docker not running).
 
 ## Git
 
 - Make small, atomic commits. One logical change per commit.
-- **Commit as you go.** After finishing a discrete change (a single fix, one refactor, one file's
-  worth of related edits), run the pre-commit checks and create the commit before moving to the next
-  change. Do not batch many unrelated edits into one large commit at the end of a session.
+- **Commit as you go.** After each discrete change, run the pre-commit checks and commit before
+  moving to the next. Do not batch unrelated edits into one large commit at the end of a session.
 - Write clear commit messages: short imperative subject, body describing the _why_.
 
-## Things Claude must never do
+## Things agents must never do
 
 - **Never push to GitHub** unless the user explicitly asks in this turn. Creating local commits is
   fine; `git push` is not.
 - **Never skip hooks** (`--no-verify`, `--no-gpg-sign`). If a hook fails, fix the cause.
 - **gpg-agent restart is pre-authorized.** If a commit hangs, times out, or fails with a pinentry /
-  gpg-agent error (common after the laptop wakes from sleep), Claude MUST run
-  `gpgconf --kill gpg-agent` itself via the Bash tool and retry the commit. Do not stop and wait for
+  gpg-agent error (common after the laptop wakes from sleep), the agent MUST run
+  `gpgconf --kill gpg-agent` itself via the shell and retry the commit. Do not stop and wait for
   the user: this command is the standard fix, safe to run at any time, and the commit cannot
   complete until the agent is restarted.
 - **Never commit real secrets.** If `django-vars.env` or `docker/.env` shows non-placeholder values
   in a staged diff, stop and flag it.
-- **Never silence lint/type/SonarQube findings just to make CI pass.** Fix the underlying issue;
-  silence only with a documented reason.
 - **Never rewrite shared history** (`git rebase`, `git reset --hard`, force-push) on any branch that
   has been pushed, unless the user asks.
 
