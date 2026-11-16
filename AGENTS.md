@@ -1,9 +1,33 @@
-# CLAUDE.md
+# AGENTS.md
 
-Guidance for Claude Code (claude.ai/code) when working in this repository.
+Guidance for AI coding agents working in this repository.
 
 Django 6 app for PyCon DE / PyData Berlin talks and schedules. Stack: Python 3.14, Tailwind v4,
 HTMX, SQLite (dev) / PostgreSQL 18 (prod), `uv` for packages.
+
+## Repo layout
+
+- `event_talks/`: project configuration (settings, root URLconf, ASGI/WSGI).
+- `events/`: the `Event` model and per-request event resolution.
+- `talks/`: core domain (talks, speakers, rooms, ratings, Q&A, Pretalx import), management commands.
+- `users/`: email-based user model and authentication adapters.
+- `utils/`: small shared helpers (email hashing, URL query-string editing).
+- `templates/`, `static/`, `assets/css/`: Django templates (HTMX partials included), static files,
+  Tailwind input.
+- `docs/`: Zensical docs site. `docker/`, `nginx/`: deployment. `scripts/`: dev tooling.
+- Details: [docs/architecture/index.md](docs/architecture/index.md).
+
+## Run locally
+
+```bash
+scripts/dev-setup.sh                   # Full setup: deps, Tailwind, migrations, dev server
+uv run python manage.py migrate        # Apply migrations
+uv run python manage.py runserver 8000 # Dev server
+.venv/bin/tailwindcss -i ./assets/css/input.css -o ./static/css/tailwind.min.css --watch
+```
+
+`DEBUG=true scripts/dev-setup.sh` runs the Tailwind watcher for you. Details and options:
+[docs/development/index.md](docs/development/index.md).
 
 ## Code style
 
@@ -24,14 +48,8 @@ HTMX, SQLite (dev) / PostgreSQL 18 (prod), `uv` for packages.
 
 ### What docformatter does not catch
 
-It skips any description containing a line it reads as a field list, and the pattern it uses for
-that allows spaces in the field name (`^\s[a-zA-Z0-9_\- ]+ ?: [\S ]+`). So a description with an
-ordinary colon in it, like `...has to hold: this is only for reporting.`, is left at whatever width
-it was typed at. Not configurable: the patterns run for every `--style`, and `--force-wrap` bypasses
-all structure detection and flattens real `Attributes:` sections.
-
-So the width is on you for any docstring description containing a colon or a hyphenated aside, and
-for every comment anywhere. Check those by eye; nothing else will.
+It skips any description containing a colon (it reads it as a field list), so check width by eye for
+those docstrings and for all comments.
 
 ## Tests and code quality
 
@@ -48,13 +66,12 @@ for every comment anywhere. Check those by eye; nothing else will.
 ### SonarQube and Django templates
 
 Its HTML analyzer does not know Django syntax, which produces two recurring classes of false
-positive in `templates/`. Both are avoidable when writing the template:
+positive in `templates/`:
 
-- **A comment body is parsed as markup.** `{# ... #}` and `{% comment %}` are invisible to the
-  analyzer, so a tag written literally in one becomes a real element in its parse, and prose inside
-  an interactive element becomes that element's visible text. Name elements in prose
-  (`a nav element`, `output elements`), use `{placeholder}` not `<placeholder>` for id patterns, and
-  keep a comment out of a `<button>` or `<a>`.
+- **A comment body is parsed as markup.** A tag written literally in `{# ... #}` or `{% comment %}`
+  becomes a real element in the analyzer's parse, and prose inside an interactive element becomes
+  that element's visible text. Name elements in prose (`a nav element`), use `{placeholder}` not
+  `<placeholder>` for id patterns, and keep a comment out of a `<button>` or `<a>`.
 - **A partial is analyzed as a standalone file.** Anything the including template supplies is
   invisible, so a labelled control in a partial still reports as unlabelled. Not fixable in the
   template; mark it false positive with the including template named as the reason.
@@ -77,14 +94,11 @@ Security tab. A workflow edit must keep it clean: actions pinned to a full commi
 `persist-credentials: false` on every checkout, and the narrowest `permissions` per job.
 
 The full local CI + SonarQube refresh pipeline lives in the `/ci` skill
-([.claude/skills/ci.md](.claude/skills/ci.md)). Claude **may** invoke it, but should do so
-sparingly:
-
-- Each run takes ~1-2 minutes and uploads to SonarCloud, so treat it as a verification step, not a
-  loop.
-- Run it at most twice per round of fixes, to confirm the findings actually cleared. Do not re-run
-  just because the `mcp__sonarqube__*` tools still show yesterday's data; wait until there is a real
-  set of changes to verify.
+([.claude/skills/ci/SKILL.md](.claude/skills/ci/SKILL.md)). It sets
+`disable-model-invocation: true`, so only the user can start it: ask the user to run it. Each run
+takes ~1-2 minutes and uploads to SonarCloud, so treat it as a verification step, not a loop. Run
+/ci at most twice per round of fixes, only once there are real changes to verify (not just because
+the `mcp__sonarqube__*` tools still show yesterday's data).
 
 The `mcp__sonarqube__*` tools query findings from the last upload.
 
