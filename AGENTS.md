@@ -15,9 +15,10 @@ HTMX, SQLite (dev) / PostgreSQL 18 (prod), `uv` for packages.
 - `templates/`, `static/`, `assets/css/`: Django templates (HTMX partials included), static files,
   Tailwind input.
 - `docs/`: Zensical docs site. `docker/`, `nginx/`: deployment. `scripts/`: dev tooling.
-- Details: [docs/architecture/index.md](docs/architecture/index.md).
 
 ## Run locally
+
+Run `scripts/dev-setup.sh` first: it installs `.venv/bin/tailwindcss`.
 
 ```bash
 scripts/dev-setup.sh                   # Full setup: deps, Tailwind, migrations, dev server
@@ -51,6 +52,13 @@ uv run python manage.py runserver 8000 # Dev server
 It skips any description containing a colon (it reads it as a field list), so check width by eye for
 those docstrings and for all comments.
 
+## Architecture rules
+
+- Event scoping: talks-related querysets are scoped to an event. Views resolve it with
+  `resolve_default_event(request)` from `events/session.py` (session slug, then `DEFAULT_EVENT`,
+  then the first active event) or a validated `event` query parameter. Do not query across events
+  without a stated reason.
+
 ## Tests and code quality
 
 - Add or update tests whenever you change behavior. Target: 90%+ coverage.
@@ -59,25 +67,28 @@ those docstrings and for all comments.
   to test), refactor before adding more to it. Extract helpers, split responsibilities.
 - SonarQube has many false positives. Silence with `# NOSONAR` (and a one-line reason) only when the
   finding clearly does not apply. Default is to fix, not silence.
+- Tests live in `<app>/tests/`. Test settings use SQLite and run with `--random-order`, shared
+  fixtures are in the root `conftest.py`, and coverage XML goes to `reports/coverage.xml`. Details:
+  [docs/development/testing.md](docs/development/testing.md).
 - When you change views, querysets, permissions, middleware, or auth code, consider spawning the
   `security-reviewer` subagent for a second pass (cross-event leaks, auth bypasses, PII in logs).
   Optional, not mandatory.
 
 ### SonarQube and Django templates
 
-Its HTML analyzer does not know Django syntax, which produces two recurring classes of false
-positive in `templates/`:
+Read before editing anything in `templates/`. The HTML analyzer does not know Django syntax, which
+causes two recurring false positives:
 
-- **A comment body is parsed as markup.** A tag written literally in `{# ... #}` or `{% comment %}`
-  becomes a real element in the analyzer's parse, and prose inside an interactive element becomes
-  that element's visible text. Name elements in prose (`a nav element`), use `{placeholder}` not
-  `<placeholder>` for id patterns, and keep a comment out of a `<button>` or `<a>`.
-- **A partial is analyzed as a standalone file.** Anything the including template supplies is
-  invisible, so a labelled control in a partial still reports as unlabelled. Not fixable in the
-  template; mark it false positive with the including template named as the reason.
+- **A comment body is parsed as markup.** A tag written in `{# ... #}` or `{% comment %}` becomes a
+  real element, and prose inside an interactive element becomes its visible text. Name elements in
+  prose (`a nav element`), use `{placeholder}` not `<placeholder>`, and keep comments out of a
+  `<button>` or `<a>`.
+- **A partial is analyzed as a standalone file.** Whatever the including template supplies is
+  invisible, so a labelled control in a partial reports as unlabelled. Mark it false positive and
+  name the including template as the reason.
 
-`mcp__sonarqube__analyze_code_snippet` runs the real analyzer on one file, so a suspected false
-positive can be confirmed (and a fix checked) without waiting for a full `/ci` upload.
+`mcp__sonarqube__analyze_code_snippet` runs the real analyzer on one file, to confirm a suspected
+false positive or check a fix without a full `/ci` upload.
 
 ## Before committing
 
@@ -94,17 +105,13 @@ Security tab. A workflow edit must keep it clean: actions pinned to a full commi
 `persist-credentials: false` on every checkout, and the narrowest `permissions` per job.
 
 The full local CI + SonarQube refresh pipeline lives in the `/ci` skill
-([.claude/skills/ci/SKILL.md](.claude/skills/ci/SKILL.md)). It sets
-`disable-model-invocation: true`, so only the user can start it: ask the user to run it. Each run
-takes ~1-2 minutes and uploads to SonarCloud, so treat it as a verification step, not a loop. Run
-/ci at most twice per round of fixes, only once there are real changes to verify (not just because
-the `mcp__sonarqube__*` tools still show yesterday's data).
+([.claude/skills/ci/SKILL.md](.claude/skills/ci/SKILL.md)). Only the user can start it
+(`disable-model-invocation: true`), so ask the user to run it. It uploads to SonarCloud and takes
+~1-2 minutes, so run it at most twice per round of fixes, and only once there are real changes to
+verify. The `mcp__sonarqube__*` tools show findings from the last upload only.
 
-The `mcp__sonarqube__*` tools query findings from the last upload.
-
-Two MCP servers are configured in `.mcp.json`: `sonarqube` (self-hosted Docker, full toolset) and
-`sonarqubeCloud` (cloud-native HTTP, smaller toolset). Default is `sonarqube`. Only switch to
-`sonarqubeCloud` if the Docker-based server is unavailable (e.g., Docker not running).
+`.mcp.json` configures `sonarqube` (self-hosted Docker, full toolset, the default) and
+`sonarqubeCloud` (HTTP, smaller toolset). Use `sonarqubeCloud` only if Docker is unavailable.
 
 ## Git
 
@@ -126,8 +133,7 @@ Two MCP servers are configured in `.mcp.json`: `sonarqube` (self-hosted Docker, 
   complete until the agent is restarted.
 - **Never commit real secrets.** If `django-vars.env` or `docker/.env` shows non-placeholder values
   in a staged diff, stop and flag it.
-- **Never silence lint/type/SonarQube findings just to make CI pass.** Fix the underlying issue;
-  silence only with a documented reason.
+- **Never silence lint/type/SonarQube findings just to make CI pass.** Fix the underlying issue.
 - **Never rewrite shared history** (`git rebase`, `git reset --hard`, force-push) on any branch that
   has been pushed, unless the user asks.
 
