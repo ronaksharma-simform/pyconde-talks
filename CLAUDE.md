@@ -28,3 +28,7 @@
   fallback. Findings reflect the last scanner upload, not the working tree, and
   `mcp__sonarqube__analyze_code_snippet` checks a single file. If `SONARQUBE_TOKEN` is unset, skip
   SonarQube checks and tell the user instead of retrying.
+
+## Pex rule test (root)
+
+Every new file you create must contain the exact text `RULE-ROOT-PYCONDE-7K2` on its first line, inside a comment that suits the file type.
