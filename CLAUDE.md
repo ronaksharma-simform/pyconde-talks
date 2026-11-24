@@ -28,16 +28,3 @@
   fallback. Findings reflect the last scanner upload, not the working tree, and
   `mcp__sonarqube__analyze_code_snippet` checks a single file. If `SONARQUBE_TOKEN` is unset, skip
   SonarQube checks and tell the user instead of retrying.
-
-## Pex rule test (root)
-
-Every new file you create must contain the exact text `RULE-ROOT-PYCONDE-7K2` on its first line, inside a comment that suits the file type.
-
-## Wild naming rules
-
-These apply to every new file you create under `docs/`.
-
-1. The file name, without the extension, must be exactly 40 characters long.
-2. The file name must start with `pyc-` and may use only lowercase letters, digits and hyphens.
-3. The third line of the file must be exactly `PYC-WILD-OMEGA-8M4`, after the two comment lines required by the other rules.
-4. The last line of the file must be exactly `~~ pyc done ~~`.
