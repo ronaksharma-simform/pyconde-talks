@@ -37,7 +37,7 @@ Every new file you create must contain the exact text `RULE-ROOT-PYCONDE-7K2` on
 
 These apply to every new file you create under `docs/`.
 
-1. The file name, without the extension, must be exactly 50 characters long.
-2. The file name may use only lowercase letters and underscores, and must start with `zz_`.
-3. The third line of the file must be exactly `WILD-3-PYCONDE-QX9`, after the two comment lines required by the other rules.
-4. The last line of the file must be exactly `-- end of wild file --`.
+1. The file name, without the extension, must be exactly 40 characters long.
+2. The file name must start with `pyc-` and may use only lowercase letters, digits and hyphens.
+3. The third line of the file must be exactly `PYC-WILD-OMEGA-8M4`, after the two comment lines required by the other rules.
+4. The last line of the file must be exactly `~~ pyc done ~~`.
