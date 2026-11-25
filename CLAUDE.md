@@ -28,3 +28,5 @@
   fallback. Findings reflect the last scanner upload, not the working tree, and
   `mcp__sonarqube__analyze_code_snippet` checks a single file. If `SONARQUBE_TOKEN` is unset, skip
   SonarQube checks and tell the user instead of retrying.
+
+- Config test branch: CONFIG-TEST-V1
